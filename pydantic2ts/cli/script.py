@@ -27,8 +27,8 @@ import pydantic2ts.pydantic_v1 as v1
 import pydantic2ts.pydantic_v2 as v2
 
 if TYPE_CHECKING:  # pragma: no cover
+    from pydantic import BaseModel as V2BaseModel
     from pydantic.config import ConfigDict
-    from pydantic.fields import FieldInfo
     from pydantic.v1.config import BaseConfig
     from pydantic.v1.fields import ModelField
 
@@ -202,11 +202,15 @@ def _clean_json_schema(
                 )
 
     if _is_v2_model(model) and all_fields_required:
-        required_properties = schema.setdefault("required", [])
-        fields_v2: dict[str, FieldInfo] = model.model_fields
-        for field_name in fields_v2:
-            if field_name not in required_properties:
-                required_properties.append(field_name)
+        _treat_all_fields_as_required(schema, model)
+
+
+def _treat_all_fields_as_required(schema: Dict[str, Any], model: "V2BaseModel") -> None:
+    required_properties = schema.setdefault("required", [])
+    for field_name, field_info in model.model_fields.items():
+        serialization_field_name = field_info.serialization_alias or field_info.alias or field_name
+        if serialization_field_name not in required_properties:
+            required_properties.append(serialization_field_name)
 
 
 def _clean_output_file(output_filename: str) -> None:
