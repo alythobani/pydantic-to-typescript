@@ -28,6 +28,7 @@ import pydantic2ts.pydantic_v2 as v2
 
 if TYPE_CHECKING:  # pragma: no cover
     from pydantic.config import ConfigDict
+    from pydantic.fields import FieldInfo
     from pydantic.v1.config import BaseConfig
     from pydantic.v1.fields import ModelField
 
@@ -158,7 +159,9 @@ def _extract_pydantic_models(module: ModuleType) -> List[type]:
     return models
 
 
-def _clean_json_schema(schema: Dict[str, Any], model: Any = None) -> None:
+def _clean_json_schema(
+    schema: Dict[str, Any], model: Any = None, all_fields_required: bool = False
+) -> None:
     """
     Clean up the resulting JSON schemas via the following steps:
 
@@ -197,6 +200,13 @@ def _clean_json_schema(schema: Dict[str, Any], model: Any = None) -> None:
                     f"Failed to ensure nullability for field {field.alias}.",
                     exc_info=True,
                 )
+
+    if _is_v2_model(model) and all_fields_required:
+        required_properties = schema.setdefault("required", [])
+        fields_v2: dict[str, FieldInfo] = model.model_fields
+        for field_name in fields_v2:
+            if field_name not in required_properties:
+                required_properties.append(field_name)
 
 
 def _clean_output_file(output_filename: str) -> None:
@@ -266,7 +276,7 @@ def _schema_generation_overrides(
                 setattr(config, key, value)
 
 
-def _generate_json_schema(models: List[type]) -> str:
+def _generate_json_schema(models: List[type], all_fields_required: bool = False) -> str:
     """
     Create a top-level '_Master_' model with references to each of the actual models.
     Generate the schema for this model, which will include the schemas for all the
@@ -291,7 +301,9 @@ def _generate_json_schema(models: List[type]) -> str:
         defs: Dict[str, Any] = master_schema.get(defs_key, {})
 
         for name, schema in defs.items():
-            _clean_json_schema(schema, models_by_name.get(name))
+            _clean_json_schema(
+                schema, models_by_name.get(name), all_fields_required=all_fields_required
+            )
 
         return json.dumps(master_schema, indent=2)
 
@@ -301,6 +313,7 @@ def generate_typescript_defs(
     output: str,
     exclude: Tuple[str, ...] = (),
     json2ts_cmd: str = "json2ts",
+    all_fields_required: bool = False,
 ) -> None:
     """
     Convert the pydantic models in a python module into typescript interfaces.
@@ -313,6 +326,9 @@ def generate_typescript_defs(
     :param json2ts_cmd: optional, the command that will execute json2ts.
                         Provide this if the executable is not discoverable
                         or if it's locally installed (ex: 'yarn json2ts').
+    :param all_fields_required: optional, treat all v2 model fields (including
+                                those with defaults) as required in generated
+                                TypeScript definitions.
     """
     if " " not in json2ts_cmd and not shutil.which(json2ts_cmd):
         raise Exception(
@@ -335,7 +351,7 @@ def generate_typescript_defs(
 
     LOG.info("Generating JSON schema from pydantic models...")
 
-    schema = _generate_json_schema(models)
+    schema = _generate_json_schema(models, all_fields_required=all_fields_required)
     schema_dir = mkdtemp()
     schema_file_path = os.path.join(schema_dir, "schema.json")
 
@@ -392,6 +408,13 @@ def parse_cli_args(args: Optional[List[str]] = None) -> argparse.Namespace:
         "Provide this if it's not discoverable or if it's only installed locally (example: 'yarn json2ts').\n"
         "(default: json2ts)",
     )
+    parser.add_argument(
+        "--all-fields-required",
+        action="store_true",
+        default=False,
+        help="Treat all fields (including those with defaults) as required in generated TypeScript definitions.\n"
+        "(Currently supported only for Pydantic V2 models.)",
+    )
     return parser.parse_args(args)
 
 
@@ -406,6 +429,7 @@ def main() -> None:
         args.output,
         tuple(args.exclude),
         args.json2ts_cmd,
+        all_fields_required=args.all_fields_required,
     )
 
 
