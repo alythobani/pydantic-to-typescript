@@ -12,7 +12,6 @@ from tempfile import mkdtemp
 from types import ModuleType
 from typing import (
     TYPE_CHECKING,
-    Annotated,
     Any,
     Dict,
     Generator,
@@ -21,10 +20,10 @@ from typing import (
     Tuple,
     Type,
     Union,
-    get_args,
-    get_origin,
 )
 from uuid import uuid4
+
+from typing_extensions import Annotated, get_args, get_origin
 
 import pydantic2ts.pydantic_v1 as v1
 import pydantic2ts.pydantic_v2 as v2
@@ -284,7 +283,9 @@ def _schema_generation_overrides(
                 setattr(config, key, value)
 
 
-def _generate_json_schema(all_models: List[type], root_models: List[type], all_fields_required: bool = False) -> str:
+def _generate_json_schema(
+    all_models: List[type], root_models: List[type], all_fields_required: bool = False
+) -> str:
     """
     Create a top-level '_Master_' model with references to each of the actual models.
     Generate the schema for this model, which will include the schemas for all the
@@ -313,7 +314,11 @@ def _generate_json_schema(all_models: List[type], root_models: List[type], all_f
         for name, schema in defs.items():
             # Match the schema definition name back to the model class using its full qualified name
             matched_model: type | None = next(
-                (m for full_qn, m in all_models_by_full_qualname.items() if full_qn.endswith(f".{name}")),
+                (
+                    m
+                    for full_qn, m in all_models_by_full_qualname.items()
+                    if full_qn.endswith(f".{name}")
+                ),
                 None,
             )
             _clean_json_schema(schema, matched_model, all_fields_required=all_fields_required)
@@ -328,6 +333,7 @@ def _collect_all_models(root_models: List[type]) -> List[type]:
     """
     seen = set[type]()
     result: List[Type[Union["V1BaseModel", "V2BaseModel"]]] = []
+
     def walk(type_: Any) -> None:
         if type_ in seen:
             return
@@ -412,7 +418,9 @@ def generate_typescript_defs(
 
     LOG.info("Generating JSON schema from pydantic models...")
 
-    schema = _generate_json_schema(all_models=all_models, root_models=root_models, all_fields_required=all_fields_required)
+    schema = _generate_json_schema(
+        all_models=all_models, root_models=root_models, all_fields_required=all_fields_required
+    )
     schema_dir = mkdtemp()
     schema_file_path = os.path.join(schema_dir, "schema.json")
 
