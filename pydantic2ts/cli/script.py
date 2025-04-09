@@ -12,6 +12,7 @@ from tempfile import mkdtemp
 from types import ModuleType
 from typing import (
     TYPE_CHECKING,
+    Annotated,
     Any,
     Dict,
     Generator,
@@ -20,6 +21,8 @@ from typing import (
     Tuple,
     Type,
     Union,
+    get_args,
+    get_origin,
 )
 from uuid import uuid4
 
@@ -280,36 +283,89 @@ def _schema_generation_overrides(
                 setattr(config, key, value)
 
 
-def _generate_json_schema(models: List[type], all_fields_required: bool = False) -> str:
+def _generate_json_schema(all_models: list[type], root_models: list[type], all_fields_required: bool = False) -> str:
     """
     Create a top-level '_Master_' model with references to each of the actual models.
     Generate the schema for this model, which will include the schemas for all the
     nested models. Then clean up the schema.
     """
     with ExitStack() as stack:
-        models_by_name: Dict[str, type] = {}
-        models_as_fields: Dict[str, Tuple[type, Any]] = {}
+        all_models_by_full_qualname: Dict[str, type] = {}
+        root_models_as_fields: Dict[str, Tuple[type, Any]] = {}
 
-        for model in models:
+        for model in all_models:
             stack.enter_context(_schema_generation_overrides(model))
             name = model.__name__
-            models_by_name[name] = model
-            models_as_fields[name] = (model, ...)
+            full_qualname = f"{model.__module__}.{model.__name__}"
+            all_models_by_full_qualname[full_qualname] = model
+            if model in root_models:  # Only top-level models get put into _Master_
+                root_models_as_fields[name] = (model, ...)
 
-        use_v1_tools = any(issubclass(m, v1.BaseModel) for m in models)
+        use_v1_tools = any(issubclass(m, v1.BaseModel) for m in root_models)
         create_model = v1.create_model if use_v1_tools else v2.create_model  # type: ignore
-        master_model = create_model("_Master_", **models_as_fields)  # type: ignore
+        master_model = create_model("_Master_", **root_models_as_fields)  # type: ignore
         master_schema = _get_model_json_schema(master_model)  # type: ignore
 
         defs_key = "$defs" if "$defs" in master_schema else "definitions"
         defs: Dict[str, Any] = master_schema.get(defs_key, {})
 
         for name, schema in defs.items():
-            _clean_json_schema(
-                schema, models_by_name.get(name), all_fields_required=all_fields_required
+            # Match the schema definition name back to the model class using its full qualified name
+            matched_model: type | None = next(
+                (m for full_qn, m in all_models_by_full_qualname.items() if full_qn.endswith(f".{name}")),
+                None,
             )
+            _clean_json_schema(schema, matched_model, all_fields_required=all_fields_required)
 
         return json.dumps(master_schema, indent=2)
+
+
+def _collect_all_models(root_models: List[type]) -> List[type]:
+    """
+    Given a list of root Pydantic models, walk all referenced model fields recursively
+    to collect all concrete model classes (BaseModel subclasses).
+    """
+    seen = set[type]()
+    result = list[type[v1.BaseModel] | type[v2.BaseModel]]()
+
+    def walk(type_: Any) -> None:
+        if type_ in seen:
+            return
+        seen.add(type_)
+
+        # Always unwrap and walk inner types — whether it's a model or not
+        for inner in _unwrap_type(type_):
+            walk(inner)
+
+        if inspect.isclass(type_) and issubclass(type_, (v1.BaseModel, v2.BaseModel)):
+            result.append(type_)
+            for field in getattr(type_, "model_fields", {}).values():
+                for inner in _unwrap_type(field.annotation):
+                    walk(inner)
+
+    for m in root_models:
+        walk(m)
+
+    return result
+
+
+def _unwrap_type(type_: Any) -> List[type]:
+    """
+    Recursively extract all types from nested containers (List[T], Dict[K, V], Annotated, etc.)
+    """
+    origin = get_origin(type_)
+
+    if origin is Annotated:
+        base_type, *_annotations = get_args(type_)
+        return _unwrap_type(base_type)
+
+    elif origin is Union:
+        return [t for arg in get_args(type_) for t in _unwrap_type(arg)]
+
+    elif hasattr(type_, "__args__"):  # Handle generics like List[...]
+        return [t for arg in get_args(type_) for t in _unwrap_type(arg)]
+
+    return [type_]
 
 
 def generate_typescript_defs(
@@ -342,20 +398,21 @@ def generate_typescript_defs(
 
     LOG.info("Finding pydantic models...")
 
-    models = _extract_pydantic_models(_import_module(module))
+    root_models = _extract_pydantic_models(_import_module(module))
+    all_models = _collect_all_models(root_models)
 
     if exclude:
-        models = [
-            m for m in models if (m.__name__ not in exclude and m.__qualname__ not in exclude)
+        all_models = [
+            m for m in all_models if (m.__name__ not in exclude and m.__qualname__ not in exclude)
         ]
 
-    if not models:
+    if not all_models:
         LOG.info("No pydantic models found, exiting.")
         return
 
     LOG.info("Generating JSON schema from pydantic models...")
 
-    schema = _generate_json_schema(models, all_fields_required=all_fields_required)
+    schema = _generate_json_schema(all_models=all_models, root_models=root_models, all_fields_required=all_fields_required)
     schema_dir = mkdtemp()
     schema_file_path = os.path.join(schema_dir, "schema.json")
 
