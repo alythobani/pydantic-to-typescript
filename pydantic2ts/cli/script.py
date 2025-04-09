@@ -32,6 +32,7 @@ import pydantic2ts.pydantic_v2 as v2
 if TYPE_CHECKING:  # pragma: no cover
     from pydantic import BaseModel as V2BaseModel
     from pydantic.config import ConfigDict
+    from pydantic.v1 import BaseModel as V1BaseModel
     from pydantic.v1.config import BaseConfig
     from pydantic.v1.fields import ModelField
 
@@ -283,7 +284,7 @@ def _schema_generation_overrides(
                 setattr(config, key, value)
 
 
-def _generate_json_schema(all_models: list[type], root_models: list[type], all_fields_required: bool = False) -> str:
+def _generate_json_schema(all_models: List[type], root_models: List[type], all_fields_required: bool = False) -> str:
     """
     Create a top-level '_Master_' model with references to each of the actual models.
     Generate the schema for this model, which will include the schemas for all the
@@ -326,8 +327,7 @@ def _collect_all_models(root_models: List[type]) -> List[type]:
     to collect all concrete model classes (BaseModel subclasses).
     """
     seen = set[type]()
-    result = list[type[v1.BaseModel] | type[v2.BaseModel]]()
-
+    result: List[Type[Union["V1BaseModel", "V2BaseModel"]]] = []
     def walk(type_: Any) -> None:
         if type_ in seen:
             return
