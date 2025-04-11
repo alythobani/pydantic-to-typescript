@@ -1,4 +1,17 @@
-# pydantic-to-typescript
+# Fork of pydantic-to-typescript
+
+This is a personal fork of [pydantic-to-typescript](https://github.com/phillipdupuis/pydantic-to-typescript/) with a couple of small features added that I needed for my project. (The original library is great, but not very actively maintained at the time of this writing.)
+
+## Extra Features in This Fork
+
+- `--all-fields-required` flag: ensures all fields are treated as required in TypeScript output (when off, fields with defaults get marked as optional)
+- Fix for [index signatures being added to indirectly imported models](https://github.com/alythobani/pydantic-to-typescript/issues/3) in the output
+
+Feel free to use this fork if those features are useful to you. I don't have time to maintain it super actively myself (or even publish it); to use it myself I currently just copy/paste the code into `cli/script.py` of the installed `pydantic-to-typescript` package.
+
+The rest of this README is copied from the original project (aside from the [Treating all fields as required](#treating-all-fields-as-required) section I've added).
+
+---
 
 [![PyPI version](https://badge.fury.io/py/pydantic-to-typescript.svg)](https://badge.fury.io/py/pydantic-to-typescript)
 [![CI/CD](https://github.com/phillipdupuis/pydantic-to-typescript/actions/workflows/cicd.yml/badge.svg)](https://github.com/phillipdupuis/pydantic-to-typescript/actions/workflows/cicd.yml)
