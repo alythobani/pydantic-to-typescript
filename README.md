@@ -12,36 +12,37 @@ Useful for any scenario in which python and javascript applications are interact
 This tool requires that you have the lovely json2ts CLI utility installed.
 Instructions can be found here: https://www.npmjs.com/package/json-schema-to-typescript
 
-### Installation
+## Installation
 
 ```bash
-$ pip install pydantic-to-typescript
+pip install pydantic-to-typescript
 ```
 
-### Pydantic V2 support
+## Pydantic V2 support
 
 If you are encountering issues with `pydantic>2`, it is most likely because you're using an old version of `pydantic-to-typescript`.
 Run `pip install 'pydantic-to-typescript>2'` and/or add `pydantic-to-typescript>=2` to your project requirements.
 
-### CI/CD
+## CI/CD
 
 You can now use `pydantic-to-typescript` to automatically validate and/or update typescript definitions as part of your CI/CD pipeline.
 
 The github action can be found here: https://github.com/marketplace/actions/pydantic-to-typescript.
 The available inputs are documented here: https://github.com/phillipdupuis/pydantic-to-typescript/blob/master/action.yml.
 
-### CLI
+## CLI
 
-| Prop                            | Description                                                                                                                                                                                                                             |
-| :------------------------------ | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| &#8209;&#8209;module            | name or filepath of the python module you would like to convert. All the pydantic models within it will be converted to typescript interfaces. Discoverable submodules will also be checked.                                            |
-| &#8209;&#8209;output            | name of the file the typescript definitions should be written to. Ex: './frontend/apiTypes.ts'                                                                                                                                          |
-| &#8209;&#8209;exclude           | name of a pydantic model which should be omitted from the resulting typescript definitions. This option can be defined multiple times, ex: `--exclude Foo --exclude Bar` to exclude both the Foo and Bar models from the output.        |
-| &#8209;&#8209;json2ts&#8209;cmd | optional, the command used to invoke json2ts. The default is 'json2ts'. Specify this if you have it installed locally (ex: 'yarn json2ts') or if the exact path to the executable is required (ex: /myproject/node_modules/bin/json2ts) |
+| Prop                                          | Description                                                                                                                                                                                                                             |
+| :-------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| &#8209;&#8209;module                          | name or filepath of the python module you would like to convert. All the pydantic models within it will be converted to typescript interfaces. Discoverable submodules will also be checked.                                            |
+| &#8209;&#8209;output                          | name of the file the typescript definitions should be written to. Ex: './frontend/apiTypes.ts'                                                                                                                                          |
+| &#8209;&#8209;exclude                         | name of a pydantic model which should be omitted from the resulting typescript definitions. This option can be defined multiple times, ex: `--exclude Foo --exclude Bar` to exclude both the Foo and Bar models from the output.        |
+| &#8209;&#8209;json2ts&#8209;cmd               | optional, the command used to invoke json2ts. The default is 'json2ts'. Specify this if you have it installed locally (ex: 'yarn json2ts') or if the exact path to the executable is required (ex: /myproject/node_modules/bin/json2ts) |
+| &#8209;&#8209;all&#8209;fields&#8209;required | optional (off by default). Treats all fields as required (present) in the generated TypeScript interfaces.                                                                                                                              |
 
 ---
 
-### Usage
+## Usage
 
 Define your pydantic models (ex: /backend/api.py):
 
@@ -74,13 +75,13 @@ def login(body: LoginCredentials):
 Execute the command for converting these models into typescript definitions, via:
 
 ```bash
-$ pydantic2ts --module backend.api --output ./frontend/apiTypes.ts
+pydantic2ts --module backend.api --output ./frontend/apiTypes.ts
 ```
 
 or:
 
 ```bash
-$ pydantic2ts --module ./backend/api.py --output ./frontend/apiTypes.ts
+pydantic2ts --module ./backend/api.py --output ./frontend/apiTypes.ts
 ```
 
 or:
@@ -138,3 +139,65 @@ async function login(
   }
 }
 ```
+
+### Treating all fields as required
+
+If you would like to treat all fields as required in the generated TypeScript interfaces, you can use the `--all-fields-required` flag.
+
+This is useful, for example, when representing a response from your Python backend API—since Pydantic will populate any missing fields with defaults before sending the response.
+
+#### Example
+
+```python
+from pydantic import BaseModel, Field
+from typing import Annotated, Literal, Optional
+
+class ExampleModel(BaseModel):
+    literal_str_with_default: Literal["c"] = "c"
+    int_with_default: int = 1
+    int_with_pydantic_default: Annotated[int, Field(default=2)]
+    int_list_with_default_factory: Annotated[list[int], Field(default_factory=list)]
+    nullable_int: Optional[int]
+    nullable_int_with_default: Optional[int] = 3
+    nullable_int_with_null_default: Optional[int] = None
+```
+
+Executing with `--all-fields-required`:
+
+```bash
+pydantic2ts --module backend.api --output ./frontend/apiTypes.ts --all-fields-required
+```
+
+```ts
+export interface ExampleModel {
+  literal_str_with_default: "c";
+  int_with_default: number;
+  int_with_pydantic_default: number;
+  int_list_with_default_factory: number[];
+  nullable_int: number | null;
+  nullable_int_with_default: number | null;
+  nullable_int_with_null_default: number | null;
+}
+```
+
+Executing without `--all-fields-required`:
+
+```bash
+pydantic2ts --module backend.api --output ./frontend/apiTypes.ts
+```
+
+```ts
+export interface ExampleModel {
+  literal_str_with_default?: "c";
+  int_with_default?: number;
+  int_with_pydantic_default?: number;
+  int_list_with_default_factory?: number[];
+  nullable_int: number | null; // optional if Pydantic V1
+  nullable_int_with_default?: number | null;
+  nullable_int_with_null_default?: number | null;
+}
+```
+
+> [!NOTE]
+> If you're using Pydantic V1, `nullable_int` will also be optional (`nullable_int?: number | null`) when executing without `--all-fields-required`. See [Pydantic docs](https://docs.pydantic.dev/2.10/concepts/models/#required-fields):
+> > In Pydantic V1, fields annotated with `Optional` or `Any` would be given an implicit default of `None` even if no default was explicitly specified. This behavior has changed in Pydantic V2, and there are no longer any type annotations that will result in a field having an implicit default value.
