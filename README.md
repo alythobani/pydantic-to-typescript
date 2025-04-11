@@ -153,13 +153,13 @@ from pydantic import BaseModel, Field
 from typing import Annotated, Literal, Optional
 
 class ExampleModel(BaseModel):
-    a: Annotated[int, Field(default=2)]
-    b: Annotated[list[int], Field(default_factory=list)]
-    c: Literal["c"] = "c"
-    d: int = 1
-    e: Optional[int]
-    f: Optional[int] = None
-    g: Optional[int] = 3
+    literal_str_with_default: Literal["c"] = "c"
+    int_with_default: int = 1
+    int_with_pydantic_default: Annotated[int, Field(default=2)]
+    int_list_with_default_factory: Annotated[list[int], Field(default_factory=list)]
+    nullable_int: Optional[int]
+    nullable_int_with_default: Optional[int] = 3
+    nullable_int_with_null_default: Optional[int] = None
 ```
 
 Executing with `--all-fields-required`:
@@ -170,13 +170,13 @@ pydantic2ts --module backend.api --output ./frontend/apiTypes.ts --all-fields-re
 
 ```ts
 export interface ExampleModel {
-  a: number;
-  b: number[];
-  c: "c";
-  d: number;
-  e: number | null;
-  f: number | null;
-  g: number | null;
+  literal_str_with_default: "c";
+  int_with_default: number;
+  int_with_pydantic_default: number;
+  int_list_with_default_factory: number[];
+  nullable_int: number | null;
+  nullable_int_with_default: number | null;
+  nullable_int_with_null_default: number | null;
 }
 ```
 
@@ -188,12 +188,16 @@ pydantic2ts --module backend.api --output ./frontend/apiTypes.ts
 
 ```ts
 export interface ExampleModel {
-  a?: number;
-  b?: number[];
-  c?: "c";
-  d?: number;
-  e: number | null;
-  f?: number | null;
-  g?: number | null;
+  literal_str_with_default?: "c";
+  int_with_default?: number;
+  int_with_pydantic_default?: number;
+  int_list_with_default_factory?: number[];
+  nullable_int: number | null; // optional if Pydantic V1
+  nullable_int_with_default?: number | null;
+  nullable_int_with_null_default?: number | null;
 }
 ```
+
+> [!NOTE]
+> If you're using Pydantic V1, `nullable_int` will also be optional (`nullable_int?: number | null`) when executing without `--all-fields-required`. See [Pydantic docs](https://docs.pydantic.dev/2.10/concepts/models/#required-fields):
+> > In Pydantic V1, fields annotated with `Optional` or `Any` would be given an implicit default of `None` even if no default was explicitly specified. This behavior has changed in Pydantic V2, and there are no longer any type annotations that will result in a field having an implicit default value.
