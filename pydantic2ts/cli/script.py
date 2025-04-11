@@ -222,6 +222,9 @@ def _clean_json_schema(
        resulting typescript file (which is a LOT of unnecessary noise).
     3) If it's a V1 model, ensure that nullability is properly represented.
        https://github.com/pydantic/pydantic/issues/1270
+    4) If all_fields_required is True, ensure that all properties are included in the
+       "required" list of the schema, so they don't get marked as optional in the
+       resulting typescript definitions.
     """
     description = schema.get("description")
 
