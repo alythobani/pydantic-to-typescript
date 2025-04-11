@@ -288,8 +288,8 @@ def _clean_output_file(output_filename: str) -> None:
     assert end is not None, "Could not find the end of the _Master_ interface."
 
     banner_comment_lines = [
-        "/* tslint:disable */\n",
         "/* eslint-disable */\n",
+        "/* tslint:disable */\n",
         "/**\n",
         "/* This file was automatically generated from pydantic models by running pydantic2ts.\n",
         "/* Do not modify it by hand - just update the pydantic models and then re-run the script\n",
