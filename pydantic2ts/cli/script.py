@@ -9,7 +9,7 @@ import sys
 from contextlib import ExitStack, contextmanager
 from importlib.util import module_from_spec, spec_from_file_location
 from tempfile import mkdtemp
-from types import ModuleType
+from types import ModuleType, UnionType
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -17,19 +17,27 @@ from typing import (
     Generator,
     List,
     Optional,
+    Set,
     Tuple,
     Type,
     Union,
 )
 from uuid import uuid4
 
+from typing_extensions import Annotated, TypeIs, get_args, get_origin
+
 import pydantic2ts.pydantic_v1 as v1
 import pydantic2ts.pydantic_v2 as v2
 
 if TYPE_CHECKING:  # pragma: no cover
     from pydantic.config import ConfigDict
+    from pydantic.fields import FieldInfo
     from pydantic.v1.config import BaseConfig
     from pydantic.v1.fields import ModelField
+
+    V1Model = Type[v1.BaseModel]
+    V2Model = Type[v2.BaseModel]
+    PydanticModel = Union[V1Model, V2Model]
 
 
 LOG = logging.getLogger("pydantic2ts")
@@ -72,7 +80,7 @@ def _is_submodule(obj: Any, module_name: str) -> bool:
     return inspect.ismodule(obj) and getattr(obj, "__name__", "").startswith(f"{module_name}.")
 
 
-def _is_v1_model(obj: Any) -> bool:
+def _is_v1_model(obj: Any) -> TypeIs["V1Model"]:
     """
     Return true if an object is a 'concrete' pydantic V1 model.
     """
@@ -86,7 +94,7 @@ def _is_v1_model(obj: Any) -> bool:
         return issubclass(obj, v1.BaseModel)
 
 
-def _is_v2_model(obj: Any) -> bool:
+def _is_v2_model(obj: Any) -> TypeIs["V2Model"]:
     """
     Return true if an object is a 'concrete' pydantic V2 model.
     """
@@ -103,7 +111,7 @@ def _is_v2_model(obj: Any) -> bool:
     return not generic_parameters
 
 
-def _is_pydantic_model(obj: Any) -> bool:
+def _is_pydantic_model(obj: Any) -> TypeIs["PydanticModel"]:
     """
     Return true if an object is a concrete model for either V1 or V2 of pydantic.
     """
@@ -142,20 +150,62 @@ def _get_model_json_schema(model: Type[Any]) -> Dict[str, Any]:
     return model.model_json_schema(mode="serialization")
 
 
-def _extract_pydantic_models(module: ModuleType) -> List[type]:
+def _extract_pydantic_models(module: ModuleType) -> Set[type]:
     """
-    Given a module, return a list of the pydantic models contained within it.
+    Given a module, return a set of the pydantic models contained within it.
     """
-    models: List[type] = []
+    models: set[type] = set()
     module_name = module.__name__
 
-    for _, model in inspect.getmembers(module, _is_pydantic_model):
-        models.append(model)
+    for _, model in inspect.getmembers(module):
+        models.update(_get_nested_pydantic_models(model))
 
     for _, submodule in inspect.getmembers(module, lambda obj: _is_submodule(obj, module_name)):
-        models.extend(_extract_pydantic_models(submodule))
+        models.update(_extract_pydantic_models(submodule))
 
     return models
+
+
+def _get_nested_pydantic_models(type_: Any) -> Set[type]:
+    """
+    Recursively extract all types from nested containers (List[T], Dict[K, V], Annotated, etc.)
+
+    >>> _get_nested_pydantic_models(Dog | Cat)
+    {Dog, Cat}
+    >>> Animal = Annotated[Union[Dog, Cat], Field(discriminator="type")]
+    >>> _get_nested_pydantic_models(Animal)
+    {Dog, Cat}
+    >>> _get_nested_pydantic_models(PersonWithAnimalFriends)
+    {PersonWithAnimalFriends, Dog, Cat}
+    >>> _get_nested_pydantic_models(Dict[str, List[Dog]])
+    {Dog}
+    """
+    nested_models = set()
+    if _is_pydantic_model(type_):
+        nested_models.add(type_)
+        for field in _get_model_fields(type_):
+            nested_models.update(_get_nested_pydantic_models(field.annotation))
+        return nested_models
+    origin = get_origin(type_)
+    if origin is None:
+        return nested_models
+    if origin is Annotated:
+        base_type, *_annotations = get_args(type_)
+        return _get_nested_pydantic_models(base_type)
+    if origin in [Union, UnionType, dict, list]:
+        for arg in get_args(type_):
+            nested_models.update(_get_nested_pydantic_models(arg))
+        return nested_models
+    return nested_models
+
+
+def _get_model_fields(model: "PydanticModel") -> List[Union["ModelField", "FieldInfo"]]:
+    """
+    Get the fields of a pydantic model.
+    """
+    if _is_v1_model(model):
+        return list(model.__fields__.values())
+    return list(model.model_fields.values())
 
 
 def _clean_json_schema(
@@ -340,7 +390,7 @@ def generate_typescript_defs(
 
     LOG.info("Finding pydantic models...")
 
-    models = _extract_pydantic_models(_import_module(module))
+    models = list(_extract_pydantic_models(_import_module(module)))
 
     if exclude:
         models = [
