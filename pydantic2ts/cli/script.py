@@ -394,6 +394,8 @@ def generate_typescript_defs(
     LOG.info("Finding pydantic models...")
 
     models = list(_extract_pydantic_models(_import_module(module)))
+    # Sort models by name to ensure consistent ordering (since we created the list from a set)
+    models.sort(key=lambda m: m.__name__)
 
     if exclude:
         models = [
