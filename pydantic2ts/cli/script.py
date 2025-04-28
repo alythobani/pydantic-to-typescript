@@ -381,7 +381,7 @@ def generate_typescript_defs(
     :param json2ts_cmd: optional, the command that will execute json2ts.
                         Provide this if the executable is not discoverable
                         or if it's locally installed (ex: 'yarn json2ts').
-    :param all_fields_required: optional, treat all v2 model fields (including
+    :param all_fields_required: optional, treat all model fields (including
                                 those with defaults) as required in generated
                                 TypeScript definitions.
     """
@@ -467,8 +467,7 @@ def parse_cli_args(args: Optional[List[str]] = None) -> argparse.Namespace:
         "--all-fields-required",
         action="store_true",
         default=False,
-        help="Treat all fields (including those with defaults) as required in generated TypeScript definitions.\n"
-        "(Currently supported only for Pydantic V2 models.)",
+        help="Treat all fields (including those with defaults) as required in generated TypeScript definitions.",
     )
     return parser.parse_args(args)
 
