@@ -6,6 +6,7 @@ This is a personal fork of [pydantic-to-typescript](https://github.com/phillipdu
 
 - `--all-fields-required` flag: ensures all fields are treated as required in TypeScript output (when off, fields with defaults get marked as optional)
 - Fix for [index signatures being added to indirectly imported models](https://github.com/alythobani/pydantic-to-typescript/issues/3) in the output
+- Fix for [ESLint `ban-tslint-comment` errors in generated files](https://github.com/alythobani/pydantic-to-typescript/issues/5) due to ordering of disable directives
 
 Feel free to use this fork if those features are useful to you. I don't have time to maintain it super actively myself (or even publish it); to use it myself I currently just copy/paste the code into `cli/script.py` of the installed `pydantic-to-typescript` package.
 
